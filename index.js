@@ -20,6 +20,9 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.commandName === "ping") {
         await interaction.reply("pong 🏓");
     }
+    if (interaction.commandName === "play") {
+        await interaction.reply("more osu!");
+    }
 });
 
 client.login(process.env.DISCORD_TOKEN);
