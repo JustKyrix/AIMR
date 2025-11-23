@@ -9,6 +9,7 @@ const client = new Client({
 
 client.once("ready", () => {
     console.log(`AIMR is online as ${client.user.tag}`);
+    client.user.setActivity("osu!", { type: 0 });
 });
 
 client.on("interactionCreate", async (interaction) => {
