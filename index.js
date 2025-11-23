@@ -23,6 +23,9 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.commandName === "play") {
         await interaction.reply("more osu!");
     }
+    if (interaction.commandName === "mizu") {
+        await interaction.reply("her spelling is terrible...");
+    }
 });
 
 client.login(process.env.DISCORD_TOKEN);

@@ -7,7 +7,10 @@ const commands = [
         .setDescription("Replies with pong."),
     new SlashCommandBuilder()
         .setName("play")
-        .setDescription("Test command: says 'more osu!'")
+        .setDescription("Test command: says 'more osu!'"),
+    new SlashCommandBuilder()
+        .setName("mizu")
+        .setDescription("find out more about this amazing person!")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
