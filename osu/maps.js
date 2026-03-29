@@ -8,8 +8,8 @@ const { searchBeatmaps, getUserTopPlays, analyzePlaystyle } = require("./osuApi"
  */
 async function getWarmupMaps(playstyle, count = 3) {
     const targetSR = {
-        min: Math.max(1, playstyle.avgSR - 1.5),
-        max: playstyle.avgSR - 0.5
+        min: Math.max(1, playstyle.comfortSR.min - 0.5),
+        max: playstyle.comfortSR.min + 0.5
     };
 
     const results = await searchBeatmaps({
