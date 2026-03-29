@@ -1,166 +1,3 @@
-// osuApi.js
-require("dotenv").config();
-
-// Token caching
-let cachedToken = null;
-let tokenExpiry = 0;
-
-/**
- * Get osu! API token (cached)
- */
-async function getOsuToken() {
-    // Return cached token if still valid (with 60s buffer)
-    if (cachedToken && Date.now() < tokenExpiry - 60000) {
-        return cachedToken;
-    }
-
-    const res = await fetch("https://osu.ppy.sh/oauth/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            client_id: Number(process.env.OSU_CLIENT_ID),
-            client_secret: process.env.OSU_CLIENT_SECRET,
-            grant_type: "client_credentials",
-            scope: "public"
-        })
-    });
-
-    if (!res.ok) {
-        const txt = await res.text();
-        console.error("osu token error:", res.status, txt);
-        throw new Error("Failed to get osu token");
-    }
-
-    const data = await res.json();
-    cachedToken = data.access_token;
-    tokenExpiry = Date.now() + (data.expires_in * 1000);
-    return cachedToken;
-}
-
-/**
- * Generic API request helper
- */
-async function osuRequest(endpoint, params = {}) {
-    const token = await getOsuToken();
-    
-    const url = new URL(`https://osu.ppy.sh/api/v2${endpoint}`);
-    Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-            url.searchParams.append(key, value);
-        }
-    });
-
-    const res = await fetch(url.toString(), {
-        headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
-        }
-    });
-
-    if (!res.ok) {
-        if (res.status === 404) return null;
-        const txt = await res.text();
-        console.error(`osu API error [${endpoint}]:`, res.status, txt);
-        throw new Error(`osu API request failed: ${res.status}`);
-    }
-
-    return res.json();
-}
-
-/**
- * Get user by username or ID
- */
-async function getOsuUser(identifier, mode = "osu") {
-    return osuRequest(`/users/${encodeURIComponent(identifier)}/${mode}`);
-}
-
-/**
- * Get user's top plays (best performance)
- * @param {number} userId 
- * @param {number} limit - max 100
- * @param {number} offset
- */
-async function getUserTopPlays(userId, limit = 100, offset = 0) {
-    return osuRequest(`/users/${userId}/scores/best`, {
-        mode: "osu",
-        limit,
-        offset
-    });
-}
-
-/**
- * Get user's recent plays
- * @param {number} userId 
- * @param {number} limit - max 100
- * @param {boolean} includeFails
- */
-async function getUserRecentPlays(userId, limit = 50, includeFails = true) {
-    return osuRequest(`/users/${userId}/scores/recent`, {
-        mode: "osu",
-        limit,
-        include_fails: includeFails ? 1 : 0
-    });
-}
-
-/**
- * Get beatmap details
- * @param {number} beatmapId 
- */
-async function getBeatmap(beatmapId) {
-    return osuRequest(`/beatmaps/${beatmapId}`);
-}
-
-/**
- * Get beatmapset details
- * @param {number} beatmapsetId 
- */
-async function getBeatmapset(beatmapsetId) {
-    return osuRequest(`/beatmapsets/${beatmapsetId}`);
-}
-
-/**
- * Search beatmaps
- * @param {object} options
- */
-async function searchBeatmaps(options = {}) {
-    const params = {
-        m: 0, // osu! standard
-        s: options.status || "ranked", // ranked, qualified, loved, pending, graveyard
-        sort: options.sort || "plays_desc",
-        q: options.query || "",
-    };
-
-    // Star rating filter
-    if (options.minSR !== undefined) {
-        params.q += ` stars>=${options.minSR}`;
-    }
-    if (options.maxSR !== undefined) {
-        params.q += ` stars<=${options.maxSR}`;
-    }
-
-    // Length filter (in seconds)
-    if (options.minLength !== undefined) {
-        params.q += ` length>=${options.minLength}`;
-    }
-    if (options.maxLength !== undefined) {
-        params.q += ` length<=${options.maxLength}`;
-    }
-
-    return osuRequest("/beatmapsets/search", params);
-}
-
-/**
- * Get beatmap scores
- * @param {number} beatmapId 
- * @param {object} options
- */
-async function getBeatmapScores(beatmapId, options = {}) {
-    return osuRequest(`/beatmaps/${beatmapId}/scores`, {
-        mode: "osu",
-        ...options
-    });
-}
-
 /**
  * Analyze user's playstyle from top plays
  * @param {Array} topPlays - Array of score objects
@@ -174,13 +11,29 @@ function analyzePlaystyle(topPlays) {
             avgBPM: 0,
             avgAcc: 0,
             avgPP: 0,
+            topPP: 0,
+            recommendedSR: 0,
             comfortSR: { min: 0, max: 0 },
             strengths: [],
             preferredLength: "medium"
         };
     }
 
-    // Calculate averages
+    // Sort by PP to get best plays first
+    const sortedByPP = [...topPlays].sort((a, b) => (b.pp || 0) - (a.pp || 0));
+    
+    // Use top 10 plays for "recommended" calculation (what player actually performs best on)
+    const top10 = sortedByPP.slice(0, 10);
+    let top10SR = 0;
+    let top10PP = 0;
+    for (const score of top10) {
+        top10SR += score.beatmap?.difficulty_rating || 0;
+        top10PP += score.pp || 0;
+    }
+    const recommendedSR = top10SR / top10.length;
+    const topPP = sortedByPP[0]?.pp || 0;
+
+    // Calculate averages from all plays
     let totalSR = 0, totalLength = 0, totalBPM = 0, totalAcc = 0, totalPP = 0;
     let jumpCount = 0, streamCount = 0, techCount = 0;
     const srValues = [];
@@ -199,7 +52,6 @@ function analyzePlaystyle(topPlays) {
         srValues.push(sr);
 
         // Simple pattern detection based on map attributes
-        // (This is a rough heuristic - real detection would need map data)
         const cs = beatmap?.cs || 4;
         const ar = beatmap?.ar || 9;
         
@@ -246,20 +98,10 @@ function analyzePlaystyle(topPlays) {
         avgBPM: Math.round(avgBPM),
         avgAcc: Math.round(avgAcc * 100) / 100,
         avgPP: Math.round(avgPP),
+        topPP: Math.round(topPP),
+        recommendedSR: Math.round(recommendedSR * 100) / 100,
         comfortSR,
         strengths,
         preferredLength
     };
 }
-
-module.exports = {
-    getOsuToken,
-    getOsuUser,
-    getUserTopPlays,
-    getUserRecentPlays,
-    getBeatmap,
-    getBeatmapset,
-    searchBeatmaps,
-    getBeatmapScores,
-    analyzePlaystyle
-};
