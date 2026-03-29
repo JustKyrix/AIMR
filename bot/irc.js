@@ -90,7 +90,10 @@ class BanchoIRC {
     }
 
     handleLine(line) {
-        console.log(`[IRC] < ${line}`);
+        // Only log non-QUIT messages to reduce spam
+        if (!line.includes(" QUIT :")) {
+            console.log(`[IRC] < ${line}`);
+        }
 
         // Respond to PING
         if (line.startsWith("PING")) {
@@ -106,15 +109,27 @@ class BanchoIRC {
         }
 
         // Handle private messages
-        const privmsgMatch = line.match(/^:(\S+)!\S+ PRIVMSG (\S+) :(.+)$/);
-        if (privmsgMatch) {
-            const sender = privmsgMatch[1];
-            const target = privmsgMatch[2];
-            const message = privmsgMatch[3].trim();
+        if (line.includes("PRIVMSG")) {
+            console.log(`[IRC] PRIVMSG detected: ${line}`);
+            
+            const privmsgMatch = line.match(/^:(\S+)!\S+ PRIVMSG (\S+) :(.+)$/);
+            if (privmsgMatch) {
+                const sender = privmsgMatch[1];
+                const target = privmsgMatch[2];
+                const message = privmsgMatch[3].trim();
 
-            // Only respond to DMs (target is our username)
-            if (target.toLowerCase() === USERNAME.toLowerCase()) {
-                this.handleCommand(sender, message);
+                console.log(`[IRC] Parsed: sender=${sender}, target=${target}, message=${message}`);
+                console.log(`[IRC] Expected target: ${USERNAME}`);
+
+                // Only respond to DMs (target is our username)
+                if (target.toLowerCase() === USERNAME.toLowerCase()) {
+                    console.log(`[IRC] Target matches! Handling command...`);
+                    this.handleCommand(sender, message);
+                } else {
+                    console.log(`[IRC] Target mismatch: ${target} vs ${USERNAME}`);
+                }
+            } else {
+                console.log(`[IRC] Regex did not match!`);
             }
         }
     }
